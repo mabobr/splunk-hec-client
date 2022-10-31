@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# ToDo:
-#  - volume watch with status
-#  - put splunk token into ENV
-#  - implement https
-#  - implement rsyslog's confirmMessages of omprog module
+# A custom event client sending events to Splunk/HEC - because omhttp is rsyslog/buggy, unonvenient.
+# Parts of code/idea, stolen here: https://jakub-jozwicki.medium.com/how-to-send-syslog-to-splunk-http-event-collector-602ecace9f73
+# The script reads STDIN, it expectes well formated JSON eventf for splunk check here: https://docs.splunk.com/Documentation/Splunk/latest/Data/FormateventsforHTTPEventCollector
+# Events are buffered/batched and send to PSLUNK/HEC, Statistics are logged.
 
-# MB: custom event server tp Splunk/HEC - because omhttp is buggy, unconevniet.
-# stolen here: https://jakub-jozwicki.medium.com/how-to-send-syslog-to-splunk-http-event-collector-602ecace9f73
+# ReleeaseNotes (not supported features):
+#  - Feature request: monitor total volume sent to SPLUNK not to eceed licence (this requires status file)
+#  - Feature request: implement https, currently only http
+#  - Feature request: implement rsyslog's confirmMessages of omprog module
 
 import datetime, traceback, sys, os, argparse, socket, select, requests, time, signal
 
@@ -24,7 +25,6 @@ def debug(text):
         print(text, file=sys.stderr)
     else:          
         f = open(args.logFile, "a")
-        os.chmod(args.logFile, 0o640)
         f.write( text+"\n" )
         f.close
         
@@ -76,13 +76,16 @@ class EventQueue:
             self.flush()
     
     #############################################################
-    def theQueueCheckTime(self):
+    def theQueueCheckTime(self) -> float:
+        '''It checks time to next flush(), eventually makes flush and returns time for select() to wait'''
         
         if self.next_flush < time.time():      
            self.flush()
+        return self.next_flush - time.time()
             
     #############################################################    
     def flush(self):
+        '''Unconditional event buffer flush to SPLUNK'''
                 
         batch_len = len(self.post_data)
         if batch_len > 0:
@@ -128,7 +131,7 @@ def main():
     global args
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--logFile',       help="log file",default=None)
+    parser.add_argument('--logFile',       help="log file (default is STDERR)",default=None)
     parser.add_argument('--hecServer',     help="IP or FQDN of HEC server", default=None)
     parser.add_argument('--hecPort',       help="TCP port of HEC server (default 8088)", default=8080, type=int)
     parser.add_argument('--hecEndpoint',   help="Endpoint paths (default=/services/collector/event)", default='/services/collector/event')
@@ -146,6 +149,11 @@ def main():
     if args.batchSize == 0:
         args.batchSize = 1
     
+    if not(args.logFile is None):
+        f = open(args.logFile, "a")
+        os.chmod(args.logFile, 0o640)
+        f.close
+        
     signal.signal(signal.SIGHUP, receiveSignal)
     signal.signal(signal.SIGINT, receiveSignal)
     signal.signal(signal.SIGTERM, receiveSignal)
@@ -158,7 +166,7 @@ def main():
     # loop over STDIN
     while True:
         
-        inputready, outputready, exceptready = select.select([sys.stdin], [], [], args.batchWait)
+        inputready, outputready, exceptready = select.select([sys.stdin], [], [], theQueue.theQueueCheckTime())
         if len(inputready) > 0:
             inline = sys.stdin.readline()
             inline_len = len(inline)
@@ -171,9 +179,7 @@ def main():
             inline = inline.rstrip()
             #debug(':'+inline+':')
             theQueue.theQueueAdd(inline) 
-        
-        theQueue.theQueueCheckTime()
-        
+               
 ############################################################
 # MAIN
 if __name__ == "__main__":
