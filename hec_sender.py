@@ -158,9 +158,7 @@ def main():
     signal.signal(signal.SIGINT, receiveSignal)
     signal.signal(signal.SIGTERM, receiveSignal)
     
-    debug("Starting, Args:"+str(args))
-    select_timeout = 1 / args.batchWait
-    
+    debug("Starting, Args:"+str(args))  
     theQueue = EventQueue(args)
             
     # loop over STDIN
