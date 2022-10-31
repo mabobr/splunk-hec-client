@@ -43,7 +43,6 @@ class EventQueue:
         self.wait         = args.batchWait
         self.post_data    = ''
         self.next_flush   = time.time() + self.wait
-        self.is_flushable = False
         self.stat_period  = 60*args.statPeriod
         self.next_stat_flush = int(time.time() + self.stat_period)
         self.__evt_cnt     = 0
