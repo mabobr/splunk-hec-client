@@ -50,6 +50,7 @@ class EventQueue:
         self.__fail_cnt    = 0
         self.__reqs_cnt    = 0
         self.__volume      = 0
+        self.__totalVolume = 0
         
         self.__session  = requests.Session()
         self.__session.headers.update({'Authorization': 'Splunk '+args.splunkToken})
@@ -101,6 +102,8 @@ class EventQueue:
             if ret_code != 200:
                 raise requests.RequestException("HTTP client.server error code="+str(ret_code)+' Payload='+hec_e.text)
         
+            # this is HEC/Splunk application responce check, 
+            # OK resposne is: {"text":"Success","code":0}
             if 'text":"Success"' in hec_e.text   :
                 self.__success_cnt += 1
             else:
@@ -108,22 +111,24 @@ class EventQueue:
                 debug(f'Status Code: {hec_e.status_code}')
                 debug("From SPLUNK="+hec_e.text)
                 
-            self.__volume += batch_len
+            self.__volume      += batch_len
+            self.__totalVolume += batch_len
+            self.post_data     = ''
+            self.currentsize  = 0
         
         if int(time.time()) > self.next_stat_flush:
             self.theQueueStats()    
         
-        self.post_data    = ''
-        self.currentsize  = 0
         self.next_flush   = time.time() + self.wait
             
     #############################################################    
     def theQueueStats(self):
-        debug(f'Statistics: AllEventCnt={self.__evt_cnt} Succ={self.__success_cnt} Fail={self.__fail_cnt} TotalVolume={self.__volume}')
+        debug(f'Statistics: AllEventCnt={self.__evt_cnt} Succ={self.__success_cnt} Fail={self.__fail_cnt} Volume={self.__volulme} TotalVolume={self.__totalVolume}')
         self.__evt_cnt     = 0
         self.__success_cnt = 0
         self.__fail_cnt    = 0
         self.__reqs_cnt    = 0
+        self.__volume      = 0
         self.next_stat_flush = int(time.time() + self.stat_period)
               
 ############################################################
@@ -137,8 +142,8 @@ def main():
     parser.add_argument('--hecEndpoint',   help="Endpoint paths (default=/services/collector/event)", default='/services/collector/event')
     parser.add_argument('--batchSize',     help="Max number of events in one batch (default 10)", default=10, type=int)
     parser.add_argument('--batchWait',     help="Max seconds wait to push to HEC (default 0.1s)", default=0.1, type=float)
-    parser.add_argument('--splunkToken',   help="Authorization SPLUNK token (w/o SPLUNK prefix)")
-    parser.add_argument('--statPeriod',    help="Period in minutes of statistic dump and reset (default 16m)", default=15, type=int)
+    parser.add_argument('--splunkToken',   help="Authorization SPLUNK token (w/o SPLUNK prefix) e,g, --splunkToken MySplunkSecret")
+    parser.add_argument('--statPeriod',    help="Period in minutes of statistic dump and reset (default 15m)", default=15, type=int)
         
     args = parser.parse_args()
     

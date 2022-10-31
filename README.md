@@ -22,7 +22,7 @@ Snippet shows part of rsyslog config file:
               binary="/usr/local/bin/hec_sender.py --logFile /usr/local/log/hec_sender.log --hecServer 10.11.12.13 --hecPort 8000 --batchSize 10 --batchWait 2 --splunkToken SplunkSecret"
               killUnresponsive="on" template="t_splunk_evts"
               signalOnClose="off" reportFailures="on"
-              confirmMessages="off" output="/storage/app/rsyslog/var/logs/rsyslog_hec_sender.log"
+              confirmMessages="off" output="/usr/local/log/rsyslog_hec_sender.log"
       )
 
 ```
