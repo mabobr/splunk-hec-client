@@ -7,7 +7,7 @@ Splunk/HEC client (python) for rsyslog omprog module, to feed events from rsyslo
 - allows event buffering via --batchSize parameter and max delay time via --batchWait
 - dumps metrics to the log file
 - splunk channels not supported
-- no input events validation i.e. do not send raw event to raw Splunk endp;oint with batching
+- no input events validation i.e. do not send raw event to raw Splunk endpoint with batching
 
 ## Generic usage:
 ```

@@ -124,7 +124,7 @@ class EventQueue:
             
     #############################################################    
     def theQueueStats(self):
-        debug(f'Statistics: AllEventCnt={self.__evt_cnt} Succ={self.__success_cnt} Fail={self.__fail_cnt} Volume={self.__volulme} TotalVolume={self.__totalVolume}')
+        debug(f'Statistics: AllEventCnt={self.__evt_cnt} Succ={self.__success_cnt} Fail={self.__fail_cnt} Volume={self.__volume} TotalVolume={self.__totalVolume}')
         self.__evt_cnt     = 0
         self.__success_cnt = 0
         self.__fail_cnt    = 0
