@@ -10,6 +10,7 @@
 #  - Feature request: monitor total volume sent to SPLUNK not to eceed licence (this requires status file)
 #  - Feature request: implement https, currently only http
 #  - Feature request: implement rsyslog's confirmMessages of omprog module
+#  - Feature request: Splunk channels
 
 import datetime, traceback, sys, os, argparse, socket, select, requests, time, signal
 
