@@ -7,25 +7,27 @@
 # Events are buffered/batched and send to PSLUNK/HEC, Statistics are logged.
 
 # ReleeaseNotes (not supported features):
-#  - Feature request: monitor total volume sent to SPLUNK not to eceed licence (this requires status file)
+#  - Feature request: monitor total volume sent to SPLUNK not to exceed licence (this requires status file)
 #  - Feature request: implement https, currently only http
 #  - Feature request: implement rsyslog's confirmMessages of omprog module
 #  - Feature request: Splunk channels
 
-import datetime, traceback, sys, os, argparse, socket, select, requests, time, signal
+import datetime, traceback, sys, os, argparse, socket, select, requests, time, signal, syslog
 
-args         = None
+args_syslog = False
+args_file   = None
 
 ##############################################################
 def debug(text):
-    global args
+    global args_syslog, args_file
     
-    text=str(datetime.datetime.now())+' ('+str(os.getpid())+') '+text
+    if args_syslog:
+        syslog.syslog(syslog.LOG_INFO, text)
 
-    if args.logFile is None:
-        print(text, file=sys.stderr)
-    else:          
-        f = open(args.logFile, "a")
+    if args_file:    
+        text=str(datetime.datetime.now())+' ('+str(os.getpid())+') '+text
+
+        f = open(args_file, "a")
         f.write( text+"\n" )
         f.close
         
@@ -134,10 +136,11 @@ class EventQueue:
               
 ############################################################
 def main():
-    global args
+    global args_syslog, args_file
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--logFile',       help="log file (default is STDERR)",default=None)
+    parser.add_argument('--logFile',       help="log file (default is None)",default=None)
+    parser.add_argument('--logSyslog',     help="log to local syslog using facility LOCAL0",default=False, action='store_true')
     parser.add_argument('--hecServer',     help="IP or FQDN of HEC server", default=None)
     parser.add_argument('--hecPort',       help="TCP port of HEC server (default 8088)", default=8080, type=int)
     parser.add_argument('--hecEndpoint',   help="Endpoint paths (default=/services/collector/event)", default='/services/collector/event')
@@ -156,10 +159,16 @@ def main():
         args.batchSize = 1
     
     if not(args.logFile is None):
+        args.logFile
         f = open(args.logFile, "a")
         os.chmod(args.logFile, 0o640)
         f.close
-        
+        args_file = args.logFile
+
+    if args.logSyslog:
+        syslog.openlog(logoption=syslog.LOG_PID, facility=syslog.LOG_LOCAL0) 
+        args_syslog = True
+    
     signal.signal(signal.SIGHUP, receiveSignal)
     signal.signal(signal.SIGINT, receiveSignal)
     signal.signal(signal.SIGTERM, receiveSignal)
