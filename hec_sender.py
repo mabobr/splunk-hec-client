@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# A custom event client sending events to Splunk/HEC - because omhttp is rsyslog/buggy, unonvenient.
+# A custom event client sending events to Splunk/HEC used by rsyslog, because rsyslog's omhttp has some issues, unonvenient.
 # Parts of code/idea, stolen here: https://jakub-jozwicki.medium.com/how-to-send-syslog-to-splunk-http-event-collector-602ecace9f73
-# The script reads STDIN, it expectes well formated JSON eventf for splunk check here: https://docs.splunk.com/Documentation/Splunk/latest/Data/FormateventsforHTTPEventCollector
-# Events are buffered/batched and send to PSLUNK/HEC, Statistics are logged.
+# The script reads STDIN, it expectes well formated JSON events for splunk, check here: https://docs.splunk.com/Documentation/Splunk/latest/Data/FormateventsforHTTPEventCollector
+# Events are buffered/batched and send to SPLUNK/HEC, Statistics are logged. Errors may be logged.
+
+# ToDo:
+#  - reset totalVolume on local midnight
+#  - write errorneous requests and responses only into the log file
 
 # ReleeaseNotes (not supported features):
 #  - Feature request: monitor total volume sent to SPLUNK not to exceed licence (this requires status file)
@@ -47,7 +51,8 @@ class EventQueue:
         self.post_data    = ''
         self.next_flush   = time.time() + self.wait
         self.stat_period  = 60*args.statPeriod
-        self.next_stat_flush = int(time.time() + self.stat_period)
+        self.last_stat_flush = int(time.time())
+        self.next_stat_flush = self.last_stat_flush + self.stat_period
         self.__evt_cnt     = 0
         self.__success_cnt = 0
         self.__fail_cnt    = 0
@@ -126,13 +131,17 @@ class EventQueue:
             
     #############################################################    
     def theQueueStats(self):
-        debug(f'Statistics: AllEventCnt={self.__evt_cnt} Succ={self.__success_cnt} Fail={self.__fail_cnt} Volume={self.__volume} TotalVolume={self.__totalVolume}')
+
+        now_ue = int(time.time())
+        elapsed = now_ue - self.last_stat_flush
+        debug(f'Statistics: elapsedSeconds={elapsed} allEventCnt={self.__evt_cnt} succReq={self.__success_cnt} failReq={self.__fail_cnt} volume={self.__volume} totalVolume={self.__totalVolume}')
         self.__evt_cnt     = 0
         self.__success_cnt = 0
         self.__fail_cnt    = 0
         self.__reqs_cnt    = 0
         self.__volume      = 0
-        self.next_stat_flush = int(time.time() + self.stat_period)
+        self.last_stat_flush = now_ue
+        self.next_stat_flush = self.last_stat_flush + self.stat_period
               
 ############################################################
 def main():
