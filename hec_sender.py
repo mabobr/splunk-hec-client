@@ -45,14 +45,15 @@ def receiveSignal(signalNumber, frame):
 class EventQueue:
     
     def __init__(self, args):
-        self.maxsize      = args.batchSize
-        self.currentsize  = 0
-        self.wait         = args.batchWait
-        self.post_data    = ''
-        self.next_flush   = time.time() + self.wait
-        self.stat_period  = 60*args.statPeriod
+        self.maxsize         = args.batchSize
+        self.currentsize     = 0
+        self.wait            = args.batchWait
+        self.post_data       = ''
+        self.next_flush      = time.time() + self.wait
+        self.stat_period     = 60*args.statPeriod
         self.last_stat_flush = int(time.time())
         self.next_stat_flush = self.last_stat_flush + self.stat_period
+        self.next_midnight   = datetime.datetime.combine(datetime.date.today()+ datetime.timedelta(days=1), datetime.datetime.min.time())
         self.__evt_cnt     = 0
         self.__success_cnt = 0
         self.__fail_cnt    = 0
@@ -125,7 +126,13 @@ class EventQueue:
             self.currentsize  = 0
         
         if int(time.time()) > self.next_stat_flush:
-            self.theQueueStats()    
+            self.theQueueStats()  
+
+        # totalVolume reset after midnight
+        if self.next_midnight < datetime.datetime.now():
+            self.theQueueStats()
+            self.next_midnight = datetime.datetime.combine(datetime.date.today()+ datetime.timedelta(days=1), datetime.datetime.min.time())
+            self.__totalVolume = 0
         
         self.next_flush   = time.time() + self.wait
             
