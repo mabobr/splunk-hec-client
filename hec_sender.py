@@ -16,7 +16,18 @@
 #  - Feature request: implement rsyslog's confirmMessages of omprog module
 #  - Feature request: Splunk channels
 
-import datetime, traceback, sys, os, argparse, socket, select, requests, time, signal, syslog
+import argparse
+import datetime
+import os
+import select
+import signal
+import yaml
+import sys
+import syslog
+import time
+import traceback
+
+import requests
 
 args_syslog = False
 args_file   = None
@@ -25,15 +36,21 @@ args_file   = None
 def debug(text):
     global args_syslog, args_file
     
+    written = False
     if args_syslog:
         syslog.syslog(syslog.LOG_INFO, text)
+        written = True
 
+    text=str(datetime.datetime.now())+' ('+str(os.getpid())+') '+text
     if args_file:    
-        text=str(datetime.datetime.now())+' ('+str(os.getpid())+') '+text
-
         f = open(args_file, "a")
         f.write( text+"\n" )
         f.close
+        written = True
+    
+    if not written:
+        sys.stderr.write(text + '\n')
+        sys.stderr.flush()
         
 ################################################################        
 def receiveSignal(signalNumber, frame):
@@ -66,8 +83,20 @@ class EventQueue:
         self.__session.headers.update({'Connection': 'Keep-Alive'})
         self.__session.headers.update({'X-OSK-Version': '000'})                              
         self.__full_url = 'http://'+args.hecServer+':'+str(args.hecPort)+args.hecEndpoint
+        self.__statFile = args.statFile
         #debug("Endpoint URL="+self.__full_url)
-        
+
+        if not(args.statFile is None):
+            # read status from statFile
+            try:
+                with open(args.statFile) as statFile_f:
+                    stat_d = yaml.load(statFile_f, Loader=yaml.FullLoader)
+                if 'totalVolume' in stat_d:
+                    self.__totalVolume = int(stat_d['totalVolume'])
+                    debug('totalVolume reloaded from statFile')
+            except FileNotFoundError:
+                pass
+
     def __del__(self):
         self.flush()
         self.theQueueStats()
@@ -105,6 +134,7 @@ class EventQueue:
                 hec_e = self.__session.post(self.__full_url, data=self.post_data)
                 ret_code = hec_e.status_code
             except Exception as e:
+                debug(str(e))
                 raise SystemExit(e)
         
             ret_code = hec_e.status_code
@@ -130,9 +160,12 @@ class EventQueue:
 
         # totalVolume reset after midnight
         if self.next_midnight < datetime.datetime.now():
+            # to write old/current counters
             self.theQueueStats()
             self.next_midnight = datetime.datetime.combine(datetime.date.today()+ datetime.timedelta(days=1), datetime.datetime.min.time())
             self.__totalVolume = 0
+            # to write new stat file value (0)
+            self.theQueueStats()
         
         self.next_flush   = time.time() + self.wait
             
@@ -149,6 +182,12 @@ class EventQueue:
         self.__volume      = 0
         self.last_stat_flush = now_ue
         self.next_stat_flush = self.last_stat_flush + self.stat_period
+
+        if not(self.__statFile is None):
+            stat_d = {}
+            stat_d['totalVolume'] = self.__totalVolume
+            with open(self.__statFile, 'w') as file:
+                yaml.dump(stat_d, file)
               
 ############################################################
 def main():
@@ -164,6 +203,8 @@ def main():
     parser.add_argument('--batchWait',     help="Max seconds wait to push to HEC (default 0.1s)", default=0.1, type=float)
     parser.add_argument('--splunkToken',   help="Authorization SPLUNK token (w/o SPLUNK prefix) e,g, --splunkToken MySplunkSecret")
     parser.add_argument('--statPeriod',    help="Period in minutes of statistic dump and reset (default 15m)", default=15, type=int)
+    parser.add_argument('--maxDailyVolume',help="Max daily volume in Bytes sent to Splunk, (default: No limit)", default=None, type=int)
+    parser.add_argument('--statFile',      help="Status file to keep volume info (default: None)", default=None)
         
     args = parser.parse_args()
     
@@ -173,7 +214,10 @@ def main():
         raise argparse.ArgumentTypeError('parameter --splunkToken is mandatory')
     if args.batchSize == 0:
         args.batchSize = 1
-    
+    if not (args.maxDailyVolume is None) and args.statFile is None:
+        raise argparse.ArgumentTypeError('parameter --statFile is mandatory if --maxDailyVolume is present')
+
+    # write test for logfile
     if not(args.logFile is None):
         args.logFile
         f = open(args.logFile, "a")
@@ -184,7 +228,13 @@ def main():
     if args.logSyslog:
         syslog.openlog(logoption=syslog.LOG_PID, facility=syslog.LOG_LOCAL0) 
         args_syslog = True
-    
+
+    # write test for stat file
+    if not(args.statFile is None):
+        f = open(args.statFile, "a")
+        os.chmod(args.statFile, 0o640)
+        f.close
+
     signal.signal(signal.SIGHUP, receiveSignal)
     signal.signal(signal.SIGINT, receiveSignal)
     signal.signal(signal.SIGTERM, receiveSignal)
