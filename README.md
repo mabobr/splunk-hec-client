@@ -3,7 +3,7 @@ Splunk/HEC client (python) [not only] for rsyslog omprog module, to feed events 
 
 ## Basic info - Features
 - only http support
-- on STDIN, it expectss well [formatted SPLUK JSON events](https://docs.splunk.com/Documentation/Splunk/latest/Data/FormateventsforHTTPEventCollector) separated by EOL (\n)
+- on STDIN, it expects well [formatted SPLUK JSON events](https://docs.splunk.com/Documentation/Splunk/latest/Data/FormateventsforHTTPEventCollector) separated by EOL (\n)
 - allows event buffering via --batchSize parameter and max delay time via --batchWait
 - dumps metrics to the log file/syslog
 - splunk channels not supported
@@ -69,7 +69,7 @@ Snippet shows part of rsyslog config file:
     (optional) every each number_minutes counters/metrics will be written to debug/log destinations, (default = 15)
 
 `--maxDailyVolume number_Bytes`
-    (optional) sets maximium limit of Bytes to be sent daily into the SPLUNK, when reached, events are not sent any more till midnight (default = 0, 0 means no limit)
+    (optional) will not send more than number_Bytes into the SPLUNK daily, when reached, events are not sent any more till midnight (default = 0, 0 means no limit)
 
 `--statFile /path/2/stat/file`
 

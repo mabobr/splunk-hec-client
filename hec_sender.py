@@ -7,11 +7,10 @@
 # Events are buffered/batched and send to SPLUNK/HEC, Statistics are logged. Errors may be logged.
 
 # ToDo:
-#  - reset totalVolume on local midnight
-#  - write errorneous requests and responses only into the log file
+# #  - write errorneous requests and responses only into the log file
 
-# ReleeaseNotes (not supported features):
-#  - Feature request: monitor total volume sent to SPLUNK not to exceed licence (this requires status file)
+# ReleeaseNotes (not supported features, bugs):
+#  - Bug: on high load, rsyslog may spawn more than one instance of this script, in this case metrics in are broken
 #  - Feature request: implement https, currently only http
 #  - Feature request: implement rsyslog's confirmMessages of omprog module
 #  - Feature request: Splunk channels
@@ -95,7 +94,7 @@ class EventQueue:
                     stat_d = yaml.load(statFile_f, Loader=yaml.FullLoader)
                 if 'totalVolume' in stat_d:
                     self.__totalVolume = int(stat_d['totalVolume'])
-                    #debug('totalVolume reloaded from statFile')
+                    debug('Loaded from stat file: Today volume='+stat_d['totalVolume'])
             except FileNotFoundError:
                 pass
 
@@ -137,7 +136,7 @@ class EventQueue:
             if self.__maxDailyVolume > 0:
                 if self.__dailyVolumeOK and self.__totalVolume + batch_len >= self.__maxDailyVolume:
                     self.__dailyVolumeOK = False
-                    debug(f'Daily MAX Volume {self.__maxDailyVolume} reached, stop sending to SPLUNK')
+                    debug(f'Will not to flush to SPLUNK till midnight, daily MAX Volume {self.__maxDailyVolume} reached.')
             
             if self.__dailyVolumeOK:
                 try:
