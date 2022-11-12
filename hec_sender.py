@@ -78,12 +78,14 @@ class EventQueue:
         self.__volume      = 0
         self.__totalVolume = 0
         
-        self.__session  = requests.Session()
+        self.__session        = requests.Session()                       
+        self.__full_url       = 'http://'+args.hecServer+':'+str(args.hecPort)+args.hecEndpoint
+        self.__statFile       = args.statFile
+        self.__maxDailyVolume = args.maxDailyVolume
+        self.__dailyVolumeOK  = True
+
         self.__session.headers.update({'Authorization': 'Splunk '+args.splunkToken})
-        self.__session.headers.update({'Connection': 'Keep-Alive'})
-        self.__session.headers.update({'X-OSK-Version': '000'})                              
-        self.__full_url = 'http://'+args.hecServer+':'+str(args.hecPort)+args.hecEndpoint
-        self.__statFile = args.statFile
+        self.__session.headers.update({'Connection': 'Keep-Alive'})  
         #debug("Endpoint URL="+self.__full_url)
 
         if not(args.statFile is None):
@@ -107,6 +109,7 @@ class EventQueue:
     
     ############################################################ 
     def theQueueAdd(self, event):
+        '''Will add textual event into the queue and will flush to SPLUNK, if the queue is full'''
         
         self.post_data      += event
         self.currentsize    += 1
@@ -130,6 +133,14 @@ class EventQueue:
         if batch_len > 0:
             self.__reqs_cnt  += 1
             
+            # maxDailyVolume check
+            try:
+                if self.__dailyVolumeOK and self.__totalVolume + batch_len >= self.__maxDailyVolume:
+                    self.__dailyVolumeOK = False
+                    debug(f'Daily MAX Volume {self.__maxDailyVolume} reached, stop sending to SPLUNK')
+            except NameError:
+                pass     
+
             try:
                 hec_e = self.__session.post(self.__full_url, data=self.post_data)
                 ret_code = hec_e.status_code
@@ -164,6 +175,9 @@ class EventQueue:
             self.theQueueStats()
             self.next_midnight = datetime.datetime.combine(datetime.date.today()+ datetime.timedelta(days=1), datetime.datetime.min.time())
             self.__totalVolume = 0
+            if not self.__dailyVolumeOK:
+                self.__dailyVolumeOK = True
+                debug('Midnight totalVolume reset, starting to send events to SPLUNK')
             # to write new stat file value (0)
             self.theQueueStats()
         
@@ -171,6 +185,7 @@ class EventQueue:
             
     #############################################################    
     def theQueueStats(self):
+        '''Write metrics into the stat file (if given), write status info to stat file'''
 
         now_ue = int(time.time())
         elapsed = now_ue - self.last_stat_flush
@@ -200,7 +215,7 @@ def main():
     parser.add_argument('--hecPort',       help="TCP port of HEC server (default 8088)", default=8080, type=int)
     parser.add_argument('--hecEndpoint',   help="Endpoint paths (default=/services/collector/event)", default='/services/collector/event')
     parser.add_argument('--batchSize',     help="Max number of events in one batch (default 10)", default=10, type=int)
-    parser.add_argument('--batchWait',     help="Max seconds wait to push to HEC (default 0.1s)", default=0.1, type=float)
+    parser.add_argument('--batchWait',     help="Max seconds wait to push to HEC (default 0.1s)", default=5.5, type=float)
     parser.add_argument('--splunkToken',   help="Authorization SPLUNK token (w/o SPLUNK prefix) e,g, --splunkToken MySplunkSecret")
     parser.add_argument('--statPeriod',    help="Period in minutes of statistic dump and reset (default 15m)", default=15, type=int)
     parser.add_argument('--maxDailyVolume',help="Max daily volume in Bytes sent to Splunk, (default: No limit)", default=None, type=int)
