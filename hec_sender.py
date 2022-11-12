@@ -175,7 +175,9 @@ class EventQueue:
             self.theQueueStats()
             self.next_midnight = datetime.datetime.combine(datetime.date.today()+ datetime.timedelta(days=1), datetime.datetime.min.time())
             self.__totalVolume = 0
-            self.__dailyVolumeOK = True
+            if not self.__dailyVolumeOK:
+                self.__dailyVolumeOK = True
+                debug('Midnight totalVolume reset, starting to send events to SPLUNK')
             # to write new stat file value (0)
             self.theQueueStats()
         
@@ -183,6 +185,7 @@ class EventQueue:
             
     #############################################################    
     def theQueueStats(self):
+        '''Write metrics into the stat file (if given), write status info to stat file'''
 
         now_ue = int(time.time())
         elapsed = now_ue - self.last_stat_flush
@@ -212,7 +215,7 @@ def main():
     parser.add_argument('--hecPort',       help="TCP port of HEC server (default 8088)", default=8080, type=int)
     parser.add_argument('--hecEndpoint',   help="Endpoint paths (default=/services/collector/event)", default='/services/collector/event')
     parser.add_argument('--batchSize',     help="Max number of events in one batch (default 10)", default=10, type=int)
-    parser.add_argument('--batchWait',     help="Max seconds wait to push to HEC (default 0.1s)", default=0.1, type=float)
+    parser.add_argument('--batchWait',     help="Max seconds wait to push to HEC (default 0.1s)", default=5.5, type=float)
     parser.add_argument('--splunkToken',   help="Authorization SPLUNK token (w/o SPLUNK prefix) e,g, --splunkToken MySplunkSecret")
     parser.add_argument('--statPeriod',    help="Period in minutes of statistic dump and reset (default 15m)", default=15, type=int)
     parser.add_argument('--maxDailyVolume',help="Max daily volume in Bytes sent to Splunk, (default: No limit)", default=None, type=int)

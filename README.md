@@ -31,12 +31,36 @@ Snippet shows part of rsyslog config file:
 ```
 
 ## Parameters
-# --logFile /path/2/debug/logfile
+--logFile /path/2/debug/logfile
     (optional) Will write log/debug into given file, write permission is required. Default is None
 
-# --logSyslog
+--logSyslog
     (optional) Will write log/debug into local syslog socket using LOCAL) as syslog facility. Default is None
         If neither of --logFile --logFile is given, log/debug goes to STDERR
 
-# --hecServer
+--hecServer ip
     (mandatory) ip or FQDN of target SPLUNK HEC server
+
+--hecPort port_number
+    (optional) port on SPLUNK HEC server to send events to (default = 8088)
+
+--hecEndpoint path
+    (optional) URL/path on HEC server, (default = /services/collector/event)
+
+--batchSize integer_count
+    (optional) Batches up to this count of events, when reached, sends to SPLUNK in one request (default = 10)
+
+--batchWait float_seconds
+    (optional) Waits up to this number of seconds, whern reached, sends buffered events to SPLUNK (default = 5.5) 
+
+--splunkToken SPLUNK_TOKEN
+    (mandatory) SPLUNK authenticaton token
+
+--statPeriod number_minutes
+    (optional) every each number_minutes counters/metrics will be written to debug/log destinations, (default = 15)
+
+--maxDailyVolume number_Bytes
+    (optional) sets maximium limit of Bytes to be sent daily into the SPLUNK, when reached, events are not sent any more till midnight (defaults = None)
+
+--statFile /path/2/stat/file
+    (optional), to keep persisten data, mandatory for --maxDailyVolume
