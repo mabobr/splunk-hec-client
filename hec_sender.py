@@ -78,12 +78,14 @@ class EventQueue:
         self.__volume      = 0
         self.__totalVolume = 0
         
-        self.__session  = requests.Session()
+        self.__session        = requests.Session()                       
+        self.__full_url       = 'http://'+args.hecServer+':'+str(args.hecPort)+args.hecEndpoint
+        self.__statFile       = args.statFile
+        self.__maxDailyVolume = args.maxDailyVolume
+        self.__dailyVolumeOK  = True
+
         self.__session.headers.update({'Authorization': 'Splunk '+args.splunkToken})
-        self.__session.headers.update({'Connection': 'Keep-Alive'})
-        self.__session.headers.update({'X-OSK-Version': '000'})                              
-        self.__full_url = 'http://'+args.hecServer+':'+str(args.hecPort)+args.hecEndpoint
-        self.__statFile = args.statFile
+        self.__session.headers.update({'Connection': 'Keep-Alive'})  
         #debug("Endpoint URL="+self.__full_url)
 
         if not(args.statFile is None):
@@ -107,6 +109,7 @@ class EventQueue:
     
     ############################################################ 
     def theQueueAdd(self, event):
+        '''Will add textual event into the queue and will flush to SPLUNK, if the queue is full'''
         
         self.post_data      += event
         self.currentsize    += 1
@@ -130,6 +133,14 @@ class EventQueue:
         if batch_len > 0:
             self.__reqs_cnt  += 1
             
+            # maxDailyVolume check
+            try:
+                if self.__dailyVolumeOK and self.__totalVolume + batch_len >= self.__maxDailyVolume:
+                    self.__dailyVolumeOK = False
+                    debug(f'Daily MAX Volume {self.__maxDailyVolume} reached, stop sending to SPLUNK')
+            except NameError:
+                pass     
+
             try:
                 hec_e = self.__session.post(self.__full_url, data=self.post_data)
                 ret_code = hec_e.status_code
@@ -164,6 +175,7 @@ class EventQueue:
             self.theQueueStats()
             self.next_midnight = datetime.datetime.combine(datetime.date.today()+ datetime.timedelta(days=1), datetime.datetime.min.time())
             self.__totalVolume = 0
+            self.__dailyVolumeOK = True
             # to write new stat file value (0)
             self.theQueueStats()
         
