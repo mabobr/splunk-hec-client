@@ -95,7 +95,7 @@ class EventQueue:
                     stat_d = yaml.load(statFile_f, Loader=yaml.FullLoader)
                 if 'totalVolume' in stat_d:
                     self.__totalVolume = int(stat_d['totalVolume'])
-                    debug('totalVolume reloaded from statFile')
+                    #debug('totalVolume reloaded from statFile')
             except FileNotFoundError:
                 pass
 
@@ -134,37 +134,36 @@ class EventQueue:
             self.__reqs_cnt  += 1
             
             # maxDailyVolume check
-            try:
+            if self.__maxDailyVolume > 0:
                 if self.__dailyVolumeOK and self.__totalVolume + batch_len >= self.__maxDailyVolume:
                     self.__dailyVolumeOK = False
                     debug(f'Daily MAX Volume {self.__maxDailyVolume} reached, stop sending to SPLUNK')
-            except NameError:
-                pass     
-
-            try:
-                hec_e = self.__session.post(self.__full_url, data=self.post_data)
+            
+            if self.__dailyVolumeOK:
+                try:
+                    hec_e = self.__session.post(self.__full_url, data=self.post_data)
+                    ret_code = hec_e.status_code
+                except Exception as e:
+                    debug(str(e))
+                    raise SystemExit(e)
+        
                 ret_code = hec_e.status_code
-            except Exception as e:
-                debug(str(e))
-                raise SystemExit(e)
+                if ret_code != 200:
+                    raise requests.RequestException("HTTP client.server error code="+str(ret_code)+' Payload='+hec_e.text)
         
-            ret_code = hec_e.status_code
-            if ret_code != 200:
-                raise requests.RequestException("HTTP client.server error code="+str(ret_code)+' Payload='+hec_e.text)
-        
-            # this is HEC/Splunk application responce check, 
-            # OK resposne is: {"text":"Success","code":0}
-            if 'text":"Success"' in hec_e.text   :
-                self.__success_cnt += 1
-            else:
-                self.__fail_cnt    += 1
-                debug(f'Status Code: {hec_e.status_code}')
-                debug("From SPLUNK="+hec_e.text)
+                # this is HEC/Splunk application responce check, 
+                # OK resposne is: {"text":"Success","code":0}
+                if 'text":"Success"' in hec_e.text   :
+                    self.__success_cnt += 1
+                else:
+                    self.__fail_cnt    += 1
+                    debug(f'Status Code: {hec_e.status_code}')
+                    debug("From SPLUNK="+hec_e.text)
                 
-            self.__volume      += batch_len
-            self.__totalVolume += batch_len
-            self.post_data     = ''
-            self.currentsize  = 0
+                self.__volume      += batch_len
+                self.__totalVolume += batch_len
+                self.post_data     = ''
+                self.currentsize  = 0
         
         if int(time.time()) > self.next_stat_flush:
             self.theQueueStats()  
@@ -215,11 +214,11 @@ def main():
     parser.add_argument('--hecPort',       help="TCP port of HEC server (default 8088)", default=8080, type=int)
     parser.add_argument('--hecEndpoint',   help="Endpoint paths (default=/services/collector/event)", default='/services/collector/event')
     parser.add_argument('--batchSize',     help="Max number of events in one batch (default 10)", default=10, type=int)
-    parser.add_argument('--batchWait',     help="Max seconds wait to push to HEC (default 0.1s)", default=5.5, type=float)
+    parser.add_argument('--batchWait',     help="Max seconds wait to push to HEC (default 5.5s)", default=5.5, type=float)
     parser.add_argument('--splunkToken',   help="Authorization SPLUNK token (w/o SPLUNK prefix) e,g, --splunkToken MySplunkSecret")
     parser.add_argument('--statPeriod',    help="Period in minutes of statistic dump and reset (default 15m)", default=15, type=int)
-    parser.add_argument('--maxDailyVolume',help="Max daily volume in Bytes sent to Splunk, (default: No limit)", default=None, type=int)
-    parser.add_argument('--statFile',      help="Status file to keep volume info (default: None)", default=None)
+    parser.add_argument('--maxDailyVolume',help="Max daily volume in Bytes sent to Splunk, (default: 0 (No limit))", default=0, type=int)
+    parser.add_argument('--statFile',      help="Status file for persistent data (default: None)", default=None)
         
     args = parser.parse_args()
     

@@ -69,8 +69,8 @@ Snippet shows part of rsyslog config file:
     (optional) every each number_minutes counters/metrics will be written to debug/log destinations, (default = 15)
 
 `--maxDailyVolume number_Bytes`
-    (optional) sets maximium limit of Bytes to be sent daily into the SPLUNK, when reached, events are not sent any more till midnight (defaults = None)
+    (optional) sets maximium limit of Bytes to be sent daily into the SPLUNK, when reached, events are not sent any more till midnight (default = 0, 0 means no limit)
 
 `--statFile /path/2/stat/file`
 
-    (optional), to keep persistent data, mandatory for --maxDailyVolume
+    (optional), to keep persistent data, mandatory when--maxDailyVolume is present (default = None)
