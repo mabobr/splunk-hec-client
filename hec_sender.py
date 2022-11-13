@@ -10,7 +10,6 @@
 # #  - write errorneous requests and responses only into the log file
 
 # ReleeaseNotes (not supported features, bugs):
-#  - Bug: on high load, rsyslog may spawn more than one instance of this script, in this case metrics in are broken
 #  - Feature request: implement https, currently only http
 #  - Feature request: implement rsyslog's confirmMessages of omprog module
 #  - Feature request: Splunk channels
@@ -79,24 +78,10 @@ class EventQueue:
         
         self.__session        = requests.Session()                       
         self.__full_url       = 'http://'+args.hecServer+':'+str(args.hecPort)+args.hecEndpoint
-        self.__statFile       = args.statFile
-        self.__maxDailyVolume = args.maxDailyVolume
-        self.__dailyVolumeOK  = True
 
         self.__session.headers.update({'Authorization': 'Splunk '+args.splunkToken})
         self.__session.headers.update({'Connection': 'Keep-Alive'})  
         #debug("Endpoint URL="+self.__full_url)
-
-        if not(args.statFile is None):
-            # read status from statFile
-            try:
-                with open(args.statFile) as statFile_f:
-                    stat_d = yaml.load(statFile_f, Loader=yaml.FullLoader)
-                if 'totalVolume' in stat_d:
-                    self.__totalVolume = int(stat_d['totalVolume'])
-                    debug('Loaded from stat file: Today volume='+stat_d['totalVolume'])
-            except FileNotFoundError:
-                pass
 
     def __del__(self):
         self.flush()
@@ -131,38 +116,34 @@ class EventQueue:
         batch_len = len(self.post_data)
         if batch_len > 0:
             self.__reqs_cnt  += 1
-            
-            # maxDailyVolume check
-            if self.__maxDailyVolume > 0:
-                if self.__dailyVolumeOK and self.__totalVolume + batch_len >= self.__maxDailyVolume:
-                    self.__dailyVolumeOK = False
-                    debug(f'Will not to flush to SPLUNK till midnight, daily MAX Volume {self.__maxDailyVolume} reached.')
-            
-            if self.__dailyVolumeOK:
-                try:
-                    hec_e = self.__session.post(self.__full_url, data=self.post_data)
-                    ret_code = hec_e.status_code
-                except Exception as e:
-                    debug(str(e))
-                    raise SystemExit(e)
-        
+                       
+            try:
+                hec_e = self.__session.post(self.__full_url, data=self.post_data)
                 ret_code = hec_e.status_code
-                if ret_code != 200:
-                    raise requests.RequestException("HTTP client.server error code="+str(ret_code)+' Payload='+hec_e.text)
+            except Exception as e:
+                debug(str(e))
+                raise SystemExit(e)
         
-                # this is HEC/Splunk application responce check, 
-                # OK resposne is: {"text":"Success","code":0}
-                if 'text":"Success"' in hec_e.text   :
-                    self.__success_cnt += 1
-                else:
-                    self.__fail_cnt    += 1
-                    debug(f'Status Code: {hec_e.status_code}')
-                    debug("From SPLUNK="+hec_e.text)
-                
+            ret_code = hec_e.status_code
+            if ret_code >= 500:
+                debug(f'Server error, code={str(ret_code)} info={hec_e.text}, exit now')
+                raise requests.RequestException("HTTP client.server error code="+str(ret_code)+' Payload='+hec_e.text)
+        
+            # this is HEC/Splunk application response check, 
+            # OK resposne is: {"text":"Success","code":0}
+            if ret_code == 200 and 'text":"Success"' in hec_e.text   :
+                self.__success_cnt += 1
                 self.__volume      += batch_len
                 self.__totalVolume += batch_len
-                self.post_data     = ''
-                self.currentsize  = 0
+
+            else:
+                self.__fail_cnt    += 1
+                debug(f'Status Code={hec_e.status_code}')
+                debug(f'From SPLUNK={hec_e.text}')
+                # data is lost
+
+            self.post_data     = ''
+            self.currentsize  = 0
         
         if int(time.time()) > self.next_stat_flush:
             self.theQueueStats()  
@@ -173,9 +154,6 @@ class EventQueue:
             self.theQueueStats()
             self.next_midnight = datetime.datetime.combine(datetime.date.today()+ datetime.timedelta(days=1), datetime.datetime.min.time())
             self.__totalVolume = 0
-            if not self.__dailyVolumeOK:
-                self.__dailyVolumeOK = True
-                debug('Midnight totalVolume reset, starting to send events to SPLUNK')
             # to write new stat file value (0)
             self.theQueueStats()
         
@@ -187,21 +165,15 @@ class EventQueue:
 
         now_ue = int(time.time())
         elapsed = now_ue - self.last_stat_flush
-        debug(f'Statistics: elapsedSeconds={elapsed} allEventCnt={self.__evt_cnt} succReq={self.__success_cnt} failReq={self.__fail_cnt} volume={self.__volume} totalVolume={self.__totalVolume}')
+        debug(f'Statistics: pid={os.getpid()} elapsedSeconds={elapsed} allEventCnt={self.__evt_cnt} succReq={self.__success_cnt} failReq={self.__fail_cnt} volume={self.__volume} totalVolume={self.__totalVolume}')
         self.__evt_cnt     = 0
         self.__success_cnt = 0
         self.__fail_cnt    = 0
         self.__reqs_cnt    = 0
         self.__volume      = 0
         self.last_stat_flush = now_ue
-        self.next_stat_flush = self.last_stat_flush + self.stat_period
-
-        if not(self.__statFile is None):
-            stat_d = {}
-            stat_d['totalVolume'] = self.__totalVolume
-            with open(self.__statFile, 'w') as file:
-                yaml.dump(stat_d, file)
-              
+        self.next_stat_flush = now_ue + self.stat_period
+             
 ############################################################
 def main():
     global args_syslog, args_file
@@ -216,9 +188,7 @@ def main():
     parser.add_argument('--batchWait',     help="Max seconds wait to push to HEC (default 5.5s)", default=5.5, type=float)
     parser.add_argument('--splunkToken',   help="Authorization SPLUNK token (w/o SPLUNK prefix) e,g, --splunkToken MySplunkSecret")
     parser.add_argument('--statPeriod',    help="Period in minutes of statistic dump and reset (default 15m)", default=15, type=int)
-    parser.add_argument('--maxDailyVolume',help="Max daily volume in Bytes sent to Splunk, (default: 0 (No limit))", default=0, type=int)
-    parser.add_argument('--statFile',      help="Status file for persistent data (default: None)", default=None)
-        
+            
     args = parser.parse_args()
     
     if args.hecServer is None:
@@ -226,10 +196,15 @@ def main():
     if args.splunkToken is None: 
         raise argparse.ArgumentTypeError('parameter --splunkToken is mandatory')
     if args.batchSize == 0:
+        debug('Reset batchSize to 1')
         args.batchSize = 1
-    if not (args.maxDailyVolume is None) and args.statFile is None:
-        raise argparse.ArgumentTypeError('parameter --statFile is mandatory if --maxDailyVolume is present')
-
+    if args.batchWait == 0:
+        debug('Reset batchWait to 5.5')
+        args.batchWait = 5.5
+    if args.statPeriod == 0:
+        debug('Reset statPeriod to 15')
+        args.statPeriod = 15
+    
     # write test for logfile
     if not(args.logFile is None):
         args.logFile
@@ -241,12 +216,6 @@ def main():
     if args.logSyslog:
         syslog.openlog(logoption=syslog.LOG_PID, facility=syslog.LOG_LOCAL0) 
         args_syslog = True
-
-    # write test for stat file
-    if not(args.statFile is None):
-        f = open(args.statFile, "a")
-        os.chmod(args.statFile, 0o640)
-        f.close
 
     signal.signal(signal.SIGHUP, receiveSignal)
     signal.signal(signal.SIGINT, receiveSignal)
